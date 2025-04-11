@@ -13,7 +13,7 @@
                 "changelog": "- Initial release\n- File upload via API and standalone page\n- Configurable target path",
                 "targetAbi": "10.10.0.0",
                 "sourceUrl": "https://github.com/TheAnonymous/MediaUploader/releases/download/1.0.0/Jellyfin.Plugin.MediaUploader_1.0.0.zip",
-                "checksum": "86F5F1A7EDBC6429DEA279E0AF5833F750C10DC12688BAC06411E31E32AA8245",
+                "checksum": "59054CE77D610FAECDDC5E46BFB2E5DD",
                 "timestamp": "2025-04-11T14:30:00Z"
             }
         ]
