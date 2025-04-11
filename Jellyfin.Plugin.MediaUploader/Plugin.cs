@@ -1,13 +1,17 @@
+// <copyright file="Plugin.cs" company="PlaceholderCompany">
+// Copyright (c) PlaceholderCompany. All rights reserved.
+// </copyright>
+
+namespace Jellyfin.Plugin.MediaUploader;
+
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using Jellyfin.Plugin.Template.Configuration;
+using Jellyfin.Plugin.MediaUploader.Configuration;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
 using MediaBrowser.Model.Plugins;
 using MediaBrowser.Model.Serialization;
-
-namespace Jellyfin.Plugin.Template;
 
 /// <summary>
 /// The main plugin.
@@ -26,13 +30,16 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     }
 
     /// <inheritdoc />
-    public override string Name => "Template";
+    public override string Name => "Media Uploader";
 
     /// <inheritdoc />
-    public override Guid Id => Guid.Parse("eb5d7894-8eef-4b36-aa6f-5d124e828ce1");
+    public override string Description => "Allows uploading media files directly via the web interface.";
+
+    /// <inheritdoc />
+    public override Guid Id => Guid.Parse("514d4276-bf23-4a85-b074-66b4cd38fd90");
 
     /// <summary>
-    /// Gets the current plugin instance.
+    ///     Gets the current plugin instance.
     /// </summary>
     public static Plugin? Instance { get; private set; }
 
@@ -43,8 +50,8 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
         [
             new PluginPageInfo
             {
-                Name = Name,
-                EmbeddedResourcePath = string.Format(CultureInfo.InvariantCulture, "{0}.Configuration.configPage.html", GetType().Namespace)
+                Name = this.Name,
+                EmbeddedResourcePath = string.Format(CultureInfo.InvariantCulture, "{0}.Configuration.configPage.html", this.GetType().Namespace),
             }
         ];
     }

@@ -1,0 +1,234 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Media Uploader</title>
+    <style>
+        /* Einfaches Styling für bessere Lesbarkeit */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            padding: 20px;
+            max-width: 700px;
+            margin: 40px auto;
+            background-color: #f8f9fa;
+            color: #343a40;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+        }
+        .container { background-color: #ffffff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.05); }
+        h1 { text-align: center; color: #007bff; margin-bottom: 30px; }
+        label { display: block; margin-top: 15px; margin-bottom: 5px; font-weight: 600; }
+        input[type="text"], input[type="password"], input[type="file"] {
+            width: calc(100% - 24px); /* Platz für Padding/Border */
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+        /* Checkbox Styling */
+        .checkbox-container { display: flex; align-items: center; margin-top: 10px; margin-bottom: 10px; }
+        .checkbox-container input[type="checkbox"] { margin-right: 8px; width: auto; }
+        .checkbox-container label { margin: 0; font-weight: normal; }
+
+        button {
+            display: block;
+            width: 100%;
+            padding: 12px 20px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            margin-top: 25px;
+            transition: background-color 0.2s ease;
+        }
+        button:hover { background-color: #218838; }
+        button:disabled { background-color: #6c757d; cursor: not-allowed; }
+        /* Fortschrittsbalken */
+        #progressContainer { margin-top: 15px; display: none; /* Standardmäßig versteckt */ }
+        progress { width: 100%; height: 25px; border-radius: 4px; }
+        progress::-webkit-progress-bar { background-color: #e9ecef; border-radius: 4px; }
+        progress::-webkit-progress-value { background-color: #007bff; border-radius: 4px; transition: width 0.1s linear; }
+        progress::-moz-progress-bar { background-color: #007bff; border-radius: 4px; transition: width 0.1s linear; }
+        #progressText { text-align: center; font-size: 0.9em; margin-top: 5px; }
+
+        #status {
+            margin-top: 20px;
+            padding: 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            text-align: center;
+            border: 1px solid transparent;
+            display: none; /* Standardmäßig ausgeblendet */
+        }
+        .status-success { background-color: #d4edda; color: #155724; border-color: #c3e6cb; display: block; }
+        .status-error { background-color: #f8d7da; color: #721c24; border-color: #f5c6cb; display: block; }
+        .status-info { background-color: #d1ecf1; color: #0c5460; border-color: #bee5eb; display: block; }
+        .warning { font-size: 0.85em; color: #dc3545; margin-top: 5px; display: block; font-weight: normal; }
+        .hint { font-size: 0.85em; color: #6c757d; margin-top: 5px; display: block; font-weight: normal;}
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Media Uploader</h1>
+    <p class="hint">Upload media files directly to your Jellyfin server.</p>
+
+    <div>
+        <label for="apiKey">Jellyfin API Key:</label>
+        <input type="password" id="apiKey" placeholder="Enter your personal API Key here">
+        <div class="checkbox-container">
+            <input type="checkbox" id="saveApiKeyCheckbox">
+            <label for="saveApiKeyCheckbox">Save API Key in browser (less secure)</label>
+        </div>
+        <span class="hint">You can create an API Key in your Jellyfin profile under Settings -> API Keys -> '+'.</span>
+        <span class="warning">Warning: Saving the API Key in browser storage (LocalStorage) is only recommended for trusted environments/private computers!</span>
+    </div>
+
+    <div>
+        <label for="fileInput">Select file:</label>
+        <input type="file" id="fileInput" accept="video/*,audio/*,.mkv,.mp4,.avi,.mov,.wmv,.ts,.webm,.flac,.mp3,.wav,.aac,.ogg">
+    </div>
+
+    <div id="progressContainer">
+        <progress id="progressBar" value="0" max="100"></progress>
+        <div id="progressText">0%</div>
+    </div>
+
+    <button id="uploadButton">Start Upload</button>
+
+    <div id="status"></div> </div>
+
+<script>
+    // Elemente referenzieren
+    const apiKeyInput = document.getElementById('apiKey');
+    const fileInput = document.getElementById('fileInput');
+    const uploadButton = document.getElementById('uploadButton');
+    const statusDiv = document.getElementById('status');
+    const saveApiKeyCheckbox = document.getElementById('saveApiKeyCheckbox');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+
+    const LS_API_KEY = 'mediaUploaderPluginApiKey'; // Eindeutiger Schlüssel für LocalStorage
+
+    // --- Hilfsfunktion für Statusanzeige ---
+    function showStatus(message, type = 'info') {
+        statusDiv.textContent = message;
+        statusDiv.className = `status-${type}`;
+    }
+
+    // --- API Key Laden/Setzen ---
+    function loadApiKey() {
+        const savedKey = localStorage.getItem(LS_API_KEY);
+        if (savedKey) {
+            apiKeyInput.value = savedKey;
+            saveApiKeyCheckbox.checked = true;
+        } else {
+            saveApiKeyCheckbox.checked = false;
+        }
+    }
+
+    function handleApiKeySave(apiKey) {
+        if (saveApiKeyCheckbox.checked) {
+            localStorage.setItem(LS_API_KEY, apiKey);
+        } else {
+            localStorage.removeItem(LS_API_KEY);
+        }
+    }
+
+    // API Key beim Laden der Seite holen
+    loadApiKey();
+
+    // --- Upload Button Klick-Event ---
+    uploadButton.addEventListener('click', () => {
+        const apiKey = apiKeyInput.value.trim();
+        const files = fileInput.files;
+
+        // --- Eingabevalidierung ---
+        if (!apiKey) {
+            // Englischer Text für Fehlermeldung
+            showStatus('Error: Please enter an API Key.', 'error');
+            apiKeyInput.focus();
+            return;
+        }
+        if (files.length === 0) {
+            // Englischer Text für Fehlermeldung
+            showStatus('Error: Please select a file.', 'error');
+            fileInput.focus();
+            return;
+        }
+
+        handleApiKeySave(apiKey); // API Key speichern/löschen
+
+        const file = files[0];
+        const formData = new FormData();
+        formData.append('file', file);
+
+        // --- UI Feedback & XMLHttpRequest ---
+        // Englischer Text für Statusmeldung
+        showStatus(`Uploading "${file.name}"...`, 'info');
+        statusDiv.style.display = 'block';
+        progressContainer.style.display = 'block';
+        progressBar.value = 0;
+        progressText.textContent = '0%';
+        uploadButton.disabled = true;
+
+        const xhr = new XMLHttpRequest();
+        const uploadUrl = '/Plugins/MediaUploader/Upload';
+
+        xhr.upload.addEventListener('progress', (event) => {
+            if (event.lengthComputable) {
+                const percentComplete = Math.round((event.loaded / event.total) * 100);
+                progressBar.value = percentComplete;
+                progressText.textContent = percentComplete + '%';
+            }
+        });
+
+        xhr.addEventListener('load', () => {
+            progressContainer.style.display = 'none';
+            uploadButton.disabled = false;
+            fileInput.value = '';
+
+            if (xhr.status >= 200 && xhr.status < 300) {
+                // Englischer Text für Erfolgsmeldung
+                showStatus(`Success: ${xhr.responseText}`, 'success');
+            } else {
+                let errorMessage = `Error ${xhr.status} (${xhr.statusText || 'Unknown Status'})`;
+                if (xhr.responseText) {
+                    try {
+                        const errorJson = JSON.parse(xhr.responseText);
+                        if (errorJson.errors && errorJson.errors[""] && errorJson.errors[""].length > 0) {
+                            errorMessage += `: ${errorJson.errors[""][0]}`;
+                        } else if (errorJson.title) {
+                            errorMessage += `: ${errorJson.title}`;
+                        } else {
+                            errorMessage += `: ${xhr.responseText}`;
+                        }
+                    } catch (e) {
+                        errorMessage += `: ${xhr.responseText}`;
+                    }
+                }
+                showStatus(errorMessage, 'error');
+            }
+        });
+
+        xhr.addEventListener('error', () => {
+            progressContainer.style.display = 'none';
+            uploadButton.disabled = false;
+            fileInput.value = '';
+            console.error('Upload XHR Network Error');
+            // Englischer Text für Fehlermeldung
+            showStatus('Network error or server unreachable.', 'error');
+        });
+
+        xhr.open('POST', uploadUrl, true);
+        xhr.setRequestHeader('X-Emby-Token', apiKey);
+        xhr.send(formData);
+    });
+</script>
+</body>
+</html>

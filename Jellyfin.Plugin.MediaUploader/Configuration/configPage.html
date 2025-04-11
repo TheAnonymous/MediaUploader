@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Media Uploader Settings</title>
+</head>
+<body>
+<div id="mediaUploaderConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-linkbutton">
+
+    <div data-role="header" data-position="fixed" class="header-fixed">
+        <a is="emby-linkbutton" class="button-icon headerButton headerButton-settings" href="/web/index.html#!/dashboard.html">
+            <span class="material-icons keyboard_backspace" aria-hidden="true"></span>
+        </a>
+        <h3 class="headerTitle">Media Uploader Settings</h3>
+    </div>
+
+    <div data-role="content">
+        <div class="content-primary">
+            <form id="mediaUploaderConfigForm">
+                <h2>Plugin Settings</h2>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="txtUploadPath">Target Upload Path:</label>
+                    <input id="txtUploadPath" name="UploadPath" type="text" is="emby-input" required="required"/>
+                    <div class="fieldDescription">
+                        Enter the full path on the server where uploaded files should be saved (e.g., <code>/media/uploads</code> or <code>C:\Jellyfin\Uploads</code>).
+                        Ensure the Jellyfin server process has **write permissions** to this directory. This field is mandatory.
+                    </div>
+                </div>
+
+                <div>
+                    <button is="emby-button" type="submit" class="raised button-submit block emby-button">
+                        <span>Save</span>
+                    </button>
+                </div>
+
+                <hr style="margin: 3em 0;" /> <h2>Direct Upload Page</h2>
+                <p>
+                    Use the following link to access the direct upload page. This page allows non-admin users to upload files using their personal API Key.
+                </p>
+                <p>
+                    <strong>Link:</strong> <a id="uploadPageLink" href="/Plugins/MediaUploader/Page" target="_blank" style="word-break: break-all;">/Plugins/MediaUploader/Page</a>
+                </p>
+                <p>
+                    <em>Suggestion: Bookmark this link for easy access.</em>
+                </p>
+
+                <h3>How to Use the Upload Page:</h3>
+                <ol style="padding-left: 25px;">
+                    <li style="margin-bottom: 10px;">
+                        <strong>Generate an API Key:</strong> Each user needs their own API Key. Go to your user profile (click profile icon top right) &rarr; Settings &rarr; API Keys &rarr; Click the '+' icon to create a new key. Give it a descriptive name (e.g., "MediaUploader Key") and copy the generated key value.
+                    </li>
+                    <li style="margin-bottom: 10px;">
+                        <strong>Use the Upload Page:</strong> Open the link above. Paste your generated API Key into the designated field. Select the media file you want to upload and click "Start Upload". </li>
+                    <li style="margin-bottom: 10px;">
+                        <strong>API Key Storage (Security Warning):</strong> For convenience, the upload page can save the entered API Key in your browser's local storage, so you don't have to enter it every time.
+                        <br>
+                        <strong style="color: #d9534f;">Warning:</strong> Saving API Keys in local storage is less secure and only recommended for trusted home environments on private computers. **Do not** use this feature on public or shared computers. For professional settings or higher security, it's better to use a password manager to store the key and paste it each time.
+                    </li>
+                </ol>
+
+            </form> </div> </div> <script type="text/javascript">
+    // Use a unique name for your plugin's config interaction object
+    var MediaUploaderConfig = {
+        pluginUniqueId: '514d4276-bf23-4a85-b074-66b4cd38fd90' // Your Plugin GUID
+    };
+
+    // Function to load the configuration data into the form
+    function loadConfig(pageElement) {
+        Dashboard.showLoadingMsg(); // Show loading indicator
+        ApiClient.getPluginConfiguration(MediaUploaderConfig.pluginUniqueId).then(function (config) {
+            // Populate the input field with the loaded value
+            pageElement.querySelector('#txtUploadPath').value = config.UploadPath || ''; // Use empty string as fallback
+
+            // (Optional) Dynamically adjust the displayed link if needed?
+            // Usually the relative link /Plugins/... is correct.
+            // pageElement.querySelector('#uploadPageLink').href = ApiClient.serverAddress() + '/Plugins/MediaUploader/Page';
+
+            Dashboard.hideLoadingMsg(); // Hide loading indicator
+        });
+    }
+
+    // Function to save the configuration data from the form
+    function saveConfig(pageElement) {
+        Dashboard.showLoadingMsg();
+        // Get current config first (to preserve other potential settings)
+        ApiClient.getPluginConfiguration(MediaUploaderConfig.pluginUniqueId).then(function (config) {
+            // Read the value from the input field and update the config object
+            config.UploadPath = pageElement.querySelector('#txtUploadPath').value;
+
+            // Send the updated configuration back to the server
+            ApiClient.updatePluginConfiguration(MediaUploaderConfig.pluginUniqueId, config).then(function (result) {
+                Dashboard.processPluginConfigurationUpdateResult(result); // Show standard success/error toast
+            });
+        });
+    }
+
+    // Event listener for when the configuration page is shown
+    document.querySelector('#mediaUploaderConfigPage').addEventListener('pageshow', function () {
+        // 'this' refers to the page element (#mediaUploaderConfigPage) in this context
+        loadConfig(this);
+    });
+
+    // Event listener for the form submission
+    document.querySelector('#mediaUploaderConfigForm').addEventListener('submit', function (e) {
+        // 'this' refers to the form element (#mediaUploaderConfigForm)
+        // Find the parent page element to pass to saveConfig
+        var pageElement = this.closest('.page');
+        saveConfig(pageElement);
+
+        e.preventDefault(); // Prevent the default form submission behavior
+        return false;
+    });
+</script>
+</div> </body>
+</html>
