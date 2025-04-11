@@ -111,10 +111,10 @@ If you want to build the plugin yourself:
     * This will create a `dist` folder containing the installable `Jellyfin.Plugin.MediaUploader_x.x.x.x.zip` file.
 6.  **Install:** Follow the **Manual Installation** steps under the "Installation" section using the files from the `dist` folder (extracting recommended).
 
-## Contributing (Optional)
+## Contributing
 
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
 
 ## License
 
-This plugin is licensed under the [GPLv3](LICENSE). *(Adjust if you chose a different license file name)*
+This plugin is licensed under the [GPLv3](LICENSE).
