@@ -14,34 +14,43 @@ The target directory for uploads must be configured in the plugin settings.
 ## Features
 
 * Direct file upload via HTTP POST request.
-* Standalone HTML upload page accessible via a direct link (useful for non-admin users).
+* Standalone HTML upload page accessible via a direct link.
 * Configurable target directory for uploads via the admin dashboard.
 * Basic progress bar during upload on the standalone page.
 * Option to save API Key in the browser's local storage (use with caution).
 
 ## Installation
 
-There are currently two main ways to install this plugin:
+**Recommended Method: Using Plugin Repository**
 
-**1. Via Release Package (Recommended when available):**
+1.  Navigate to your Jellyfin Dashboard.
+2.  Go to **Plugins** in the sidebar, then click on the **Repositories** tab.
+3.  Click the **+** button to add a new repository.
+4.  Enter a **Name** for the repository (e.g., "Media Uploader Repo").
+5.  Enter the **Repository URL**:
+    ```
+    https://raw.githubusercontent.com/TheAnonymous/MediaUploader/refs/heads/main/manifest.json
+    ```
+6.  Click **Save**.
+7.  Go back to the **Catalog** tab within Plugins.
+8.  You might need to click the **Refresh** button (top right) for the server to fetch the new repository data.
+9.  Find **"Media Uploader"** in the catalog.
+10. Click **Install**.
+11. Restart your Jellyfin server when prompted.
 
-* Download the `Jellyfin.Plugin.MediaUploader_x.x.x.x.zip` file from the [Plugin Releases Page](link-to-your-github-releases-page-later).
-* Place the downloaded `.zip` file into your Jellyfin server's plugin directory.
-* Restart your Jellyfin server.
-* **Important Note:** Due to potential issues with Jellyfin loading plugins from ZIP files in some environments (as experienced during development), you might need to perform a **manual extraction** instead:
-    * Stop the Jellyfin server.
-    * Create a folder named `Jellyfin.Plugin.MediaUploader` inside your server's `plugins` directory.
-    * Extract the **contents** of the downloaded ZIP file directly into this new folder.
-    * Start the Jellyfin server.
+**Fallback Method: Manual Installation**
 
-**Common Plugin Directory Locations:**
-    * **Windows:** `C:\ProgramData\Jellyfin\Server\plugins`
-    * **Linux (Package):** `/var/lib/jellyfin/plugins`
-    * **Linux (Docker):** Typically mapped to `/config/plugins` inside the container.
+*If the repository method fails or you prefer manual installation:*
 
-**2. Building from Source:**
-
-* See the "Building from Source" section below. Follow the build steps and then use the manual extraction method described above to install the built files.
+1.  Download the `Jellyfin.Plugin.MediaUploader_x.x.x.x.zip` file from the [Plugin Releases Page](https://github.com/TheAnonymous/MediaUploader/releases).
+2.  **Stop** your Jellyfin server.
+3.  Create a folder named `Jellyfin.Plugin.MediaUploader` inside your server's `plugins` directory.
+    * **Common Plugin Directory Locations:**
+        * **Windows:** `C:\ProgramData\Jellyfin\Server\plugins`
+        * **Linux (Package):** `/var/lib/jellyfin/plugins`
+        * **Linux (Docker):** Typically mapped to `/config/plugins` inside the container.
+4.  Extract the **contents** of the downloaded ZIP file directly into the newly created `Jellyfin.Plugin.MediaUploader` folder. (Do not put the ZIP file itself there, and do not have an extra nested folder inside).
+5.  **Start** your Jellyfin server. The plugin should now be loaded.
 
 ## Configuration
 
@@ -49,9 +58,9 @@ After installing the plugin and restarting Jellyfin:
 
 1.  Navigate to your Jellyfin Dashboard.
 2.  Go to **Plugins** in the sidebar.
-3.  Find **"Media Uploader"** in the list and click on it (or the settings icon).
+3.  Find **"Media Uploader"** in the list (under "Installed") and click on it (or the settings/three-dot icon next to it).
 4.  **Set the Target Upload Path:** You **must** enter the full path to a directory on your server where you want uploaded files to be saved (e.g., `/srv/jellyfin/uploads` or `D:\Media\Uploads`).
-    * **Crucially:** Ensure the user account running the Jellyfin server process has **write permissions** for this directory!
+    * **Crucially:** Ensure the user account running the Jellyfin server process has **write permissions** for this directory! This field is mandatory.
 5.  Click **Save**.
 6.  On the same settings page, you will find the direct link to the standalone upload page.
 
@@ -75,24 +84,32 @@ If you want to build the plugin yourself:
     * Git
 2.  **Clone the repository:**
     ```bash
-    git clone [URL-to-your-plugin-repository]
+    git clone YOUR_REPOSITORY_URL_HERE
     cd [repository-folder]
     ```
-3.  **Restore dependencies:**
+    *(Replace `YOUR_REPOSITORY_URL_HERE`)*
+3.  **Ensure `global.json` uses .NET 8 SDK:** Create or modify `global.json` in the root directory:
+    ```json
+    {
+      "sdk": {
+        "version": "8.0.200", // Or your installed 8.0.xxx version
+        "rollForward": "latestMinor",
+        "allowPrerelease": false
+      }
+    }
+    ```
+4.  **Restore dependencies:**
     ```bash
     dotnet restore
     ```
-4.  **Build and Package:**
-    * Ensure the `build.ps1` script is present in the root directory. (Note: This script might need to be created using the code provided during development, as the official template may not include it anymore).
+5.  **Build and Package:**
+    * Ensure the `build.ps1` script is present in the root directory. (You might need to create it using the previously provided code if cloning fresh).
     * Run the build script from PowerShell:
         ```powershell
-        # Allow script execution for this process
-        Set-ExecutionPolicy Bypass -Scope Process -Force
-        # Run the build script
-        .\build.ps1
+        Set-ExecutionPolicy Bypass -Scope Process -Force; .\build.ps1 -Configuration Release
         ```
     * This will create a `dist` folder containing the installable `Jellyfin.Plugin.MediaUploader_x.x.x.x.zip` file.
-5.  **Install:** Follow the manual extraction steps under the "Installation" section using the files from the `dist` folder or the generated ZIP.
+6.  **Install:** Follow the **Manual Installation** steps under the "Installation" section using the files from the `dist` folder (extracting recommended).
 
 ## Contributing (Optional)
 
@@ -100,4 +117,4 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 
 ## License
 
-This plugin is licensed under the [GPLv3](link-to-your-license-file-or-standard-gpl3), as it links against Jellyfin core components which are also GPLv3 licensed.
+This plugin is licensed under the [GPLv3](LICENSE). *(Adjust if you chose a different license file name)*
