@@ -67,76 +67,39 @@ namespace Jellyfin.Plugin.MediaUploader
         {
             _logger.LogInformation("Media Uploader: UploadFile endpoint hit.");
 
-            // --- 1. Get and Validate Configuration ---
-            var configuredPath = Plugin.Instance?.Configuration.UploadPath;
-            if (string.IsNullOrEmpty(configuredPath))
+            if (!ValidateConfiguration(out var targetDirectory))
             {
-                _logger.LogError("Media Uploader: Upload path is not configured in plugin settings!");
                 return StatusCode(StatusCodes.Status500InternalServerError, "Upload path is not configured in plugin settings.");
             }
 
-            // Use the configured path as the target directory
-            var targetDirectory = configuredPath;
-            _logger.LogInformation("Media Uploader: Using configured target directory: '{TargetDirectory}'", targetDirectory);
+            if (!ValidateFile(file))
+            {
+                return BadRequest("No file uploaded or file is empty.");
+            }
+
+            if (!PrepareAndValidateTargetPath(targetDirectory, file.FileName, out var fullTargetPath))
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, "Invalid target path.");
+            }
+
+            var safeFileName = Path.GetFileName(fullTargetPath); // Get the sanitized filename for logging and response
 
             try
             {
-                // --- 2. Validate Input File ---
-                if (file == null || file.Length == 0)
+                if (!await SaveFileAsync(file, fullTargetPath).ConfigureAwait(false))
                 {
-                    _logger.LogWarning("Media Uploader: No file uploaded or file is empty.");
-                    return BadRequest("No file uploaded or file is empty.");
-                }
-
-                _logger.LogInformation("Media Uploader: Received file '{FileName}' ({Length} bytes), type: '{ContentType}'", file.FileName, file.Length, file.ContentType);
-
-                // --- 3. Prepare and Validate Target Path ---
-                var originalFileName = Path.GetFileName(file.FileName); // Extract filename only
-                var safeFileName = _fileSystem.GetValidFilename(originalFileName); // Sanitize filename
-                var fullTargetPath = Path.Combine(targetDirectory, safeFileName);
-                var fullTargetDirectory = Path.GetFullPath(targetDirectory);
-
-                // Security Check: Ensure the resolved path is within the configured directory
-                if (!Path.GetFullPath(fullTargetPath).StartsWith(fullTargetDirectory, StringComparison.OrdinalIgnoreCase))
-                {
-                    _logger.LogError(
-                        "Media Uploader: Invalid target path generated. Attempted Path: '{AttemptedPath}', Resolved Path: '{ResolvedPath}', Allowed Directory: '{AllowedDirectory}'",
-                        fullTargetPath, // Log the potentially malicious path
-                        Path.GetFullPath(fullTargetPath), // Log the resolved path
-                        fullTargetDirectory);
-                    return StatusCode(StatusCodes.Status500InternalServerError, "Invalid target path.");
-                }
-
-                // --- 4. Save the File ---
-                _logger.LogInformation("Media Uploader: Attempting to save file '{SafeFileName}' to '{FullTargetPath}'", safeFileName, fullTargetPath);
-                try
-                {
-                    // Use async stream operations
-                    await using (var fileStream = new FileStream(fullTargetPath, FileMode.Create, FileAccess.Write, FileShare.None))
-                    {
-                        // Copy the uploaded file's stream to the file stream asynchronously
-                        await file.CopyToAsync(fileStream);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    // Log specific file saving errors
-                    _logger.LogError(ex, "Media Uploader: Error saving file '{SafeFileName}' to '{FullTargetPath}'", safeFileName, fullTargetPath);
-                    // Re-throw to be caught by the outer catch block, or return a specific error
-                    return StatusCode(StatusCodes.Status500InternalServerError, $"Error saving file: {ex.Message}");
+                    // Specific error already logged in SaveFileAsync
+                    return StatusCode(StatusCodes.Status500InternalServerError, $"Error saving file {safeFileName}.");
                 }
 
                 _logger.LogInformation("Media Uploader: File '{SafeFileName}' successfully saved to '{FullTargetPath}'.", safeFileName, fullTargetPath);
 
-                // --- Optional: Trigger Library Scan ---
-                // Requires ILibraryManager injection in constructor (already done)
-                // Consider making this configurable
+                // Optional: Trigger Library Scan (Consider making this configurable or a separate endpoint)
                 /*
                 try
                 {
                     _logger.LogInformation("Media Uploader: Requesting library validation for path: {TargetDirectory}", targetDirectory);
-                    // ValidateLibraryPath might trigger scans if the path is part of a library
-                    _libraryManager.ValidateLibraryPath(targetDirectory); // Removed CancellationToken for simplicity, add if needed
+                    _libraryManager.ValidateLibraryPath(targetDirectory);
                     _logger.LogInformation("Media Uploader: Library validation requested.");
                 }
                 catch (Exception ex)
@@ -146,23 +109,137 @@ namespace Jellyfin.Plugin.MediaUploader
                 }
                 */
 
-                // --- 5. Return Success Response ---
                 return Ok($"File {safeFileName} uploaded successfully.");
             }
-            catch (IOException ioEx) // Handle specific IO errors during file operations
+            catch (IOException ioEx)
             {
-                _logger.LogError(ioEx, "Media Uploader: IO Error during upload process: {ErrorMessage}", ioEx.Message);
+                _logger.LogError(ioEx, "Media Uploader: IO Error during upload process for file '{SafeFileName}': {ErrorMessage}", safeFileName, ioEx.Message);
                 return StatusCode(StatusCodes.Status500InternalServerError, $"IO Error: {ioEx.Message}");
             }
-            catch (UnauthorizedAccessException authEx) // Handle permission errors
+            catch (UnauthorizedAccessException authEx)
             {
-                _logger.LogError(authEx, "Media Uploader: Permission denied during upload process: {ErrorMessage}", authEx.Message);
+                _logger.LogError(authEx, "Media Uploader: Permission denied during upload process for file '{SafeFileName}': {ErrorMessage}", safeFileName, authEx.Message);
                 return StatusCode(StatusCodes.Status403Forbidden, $"Permission denied: {authEx.Message}");
             }
-            catch (Exception ex) // Catch-all for other unexpected errors
+            catch (Exception ex)
             {
-                _logger.LogError(ex, "Media Uploader: Unexpected error processing file upload: {ErrorMessage}", ex.Message);
+                _logger.LogError(ex, "Media Uploader: Unexpected error processing file upload for '{SafeFileName}': {ErrorMessage}", safeFileName, ex.Message);
                 return StatusCode(StatusCodes.Status500InternalServerError, $"Unexpected error uploading file: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Validates the plugin configuration for the upload path.
+        /// </summary>
+        /// <param name="targetDirectory">The configured upload directory path if valid.</param>
+        /// <returns>True if the configuration is valid, otherwise false.</returns>
+        private bool ValidateConfiguration(out string targetDirectory)
+        {
+            targetDirectory = string.Empty; // Initialize out parameter
+            var configuredPath = Plugin.Instance?.Configuration.UploadPath;
+            if (string.IsNullOrEmpty(configuredPath))
+            {
+                _logger.LogError("Media Uploader: Upload path is not configured in plugin settings!");
+                return false;
+            }
+
+            targetDirectory = configuredPath;
+            _logger.LogInformation("Media Uploader: Using configured target directory: '{TargetDirectory}'", targetDirectory);
+            return true;
+        }
+
+        /// <summary>
+        /// Validates the uploaded file.
+        /// </summary>
+        /// <param name="file">The uploaded file.</param>
+        /// <returns>True if the file is valid, otherwise false.</returns>
+        private bool ValidateFile(IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+            {
+                _logger.LogWarning("Media Uploader: No file uploaded or file is empty.");
+                return false;
+            }
+
+            _logger.LogInformation("Media Uploader: Received file '{FileName}' ({Length} bytes), type: '{ContentType}'", file.FileName, file.Length, file.ContentType);
+            return true;
+        }
+
+        /// <summary>
+        /// Prepares and validates the target path for the uploaded file.
+        /// </summary>
+        /// <param name="targetDirectory">The base directory for uploads.</param>
+        /// <param name="fileName">The original name of the uploaded file.</param>
+        /// <param name="fullTargetPath">The full validated and sanitized path for saving the file.</param>
+        /// <returns>True if the path is valid and safe, otherwise false.</returns>
+        private bool PrepareAndValidateTargetPath(string targetDirectory, string fileName, out string fullTargetPath)
+        {
+            fullTargetPath = string.Empty; // Initialize out parameter
+            var originalFileName = Path.GetFileName(fileName); // Extract filename only
+            var safeFileName = _fileSystem.GetValidFilename(originalFileName); // Sanitize filename
+            var combinedPath = Path.Combine(targetDirectory, safeFileName);
+            var fullTargetDirectory = Path.GetFullPath(targetDirectory);
+
+            // Security Check: Ensure the resolved path is within the configured directory
+            if (!Path.GetFullPath(combinedPath).StartsWith(fullTargetDirectory, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogError(
+                    "Media Uploader: Invalid target path generated. Attempted Path: '{AttemptedPath}', Resolved Path: '{ResolvedPath}', Allowed Directory: '{AllowedDirectory}'",
+                    combinedPath, // Log the potentially malicious path
+                    Path.GetFullPath(combinedPath), // Log the resolved path
+                    fullTargetDirectory);
+                // fullTargetPath is already string.Empty due to initialization
+                return false;
+            }
+
+            fullTargetPath = combinedPath;
+            _logger.LogInformation("Media Uploader: Target path for file '{SafeFileName}' validated: '{FullTargetPath}'", safeFileName, fullTargetPath);
+            return true;
+        }
+
+        /// <summary>
+        /// Saves the uploaded file to the specified path.
+        /// </summary>
+        /// <param name="file">The file to save.</param>
+        /// <param name="fullTargetPath">The full path where the file should be saved.</param>
+        /// <returns>True if the file was saved successfully, otherwise false.</returns>
+        private async Task<bool> SaveFileAsync(IFormFile file, string fullTargetPath)
+        {
+            var safeFileName = Path.GetFileName(fullTargetPath); // Get the sanitized filename for logging
+            _logger.LogInformation("Media Uploader: Attempting to save file '{SafeFileName}' to '{FullTargetPath}'", safeFileName, fullTargetPath);
+            FileStream? fileStream = null; // CS8600: Make FileStream nullable
+            try
+            {
+                try // Inner try for FileStream operations
+                {
+                    fileStream = new FileStream(fullTargetPath, FileMode.Create, FileAccess.Write, FileShare.None);
+                    await file.CopyToAsync(fileStream).ConfigureAwait(false);
+                }
+                finally // Inner finally to dispose the FileStream
+                {
+                    if (fileStream != null)
+                    {
+                        await fileStream.DisposeAsync().ConfigureAwait(false);
+                    }
+                } // SA1513: Add blank line after this closing brace
+
+                // _logger.LogInformation("Media Uploader: File '{SafeFileName}' successfully saved to '{FullTargetPath}'.", safeFileName, fullTargetPath); // Moved to UploadFile method
+                return true;
+            }
+            catch (IOException ioEx) // More specific exception handling for file operations
+            {
+                _logger.LogError(ioEx, "Media Uploader: IO Error saving file '{SafeFileName}' to '{FullTargetPath}': {ErrorMessage}", safeFileName, fullTargetPath, ioEx.Message);
+                return false;
+            }
+            catch (UnauthorizedAccessException) // Handle permission errors specifically for saving
+            {
+                // Re-throw to be caught by the main handler in UploadFile for a 403 response
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Media Uploader: Error saving file '{SafeFileName}' to '{FullTargetPath}'", safeFileName, fullTargetPath);
+                return false;
             }
         }
 
@@ -172,16 +249,16 @@ namespace Jellyfin.Plugin.MediaUploader
         /// <returns>An HTML page as ContentResult.</returns>
         [HttpGet("Page")] // Route: /Plugins/MediaUploader/Page
         [Produces("text/html")]
-        public IActionResult GetUploadPage()
+        public async Task<IActionResult> GetUploadPage()
         {
             _logger.LogInformation("Media Uploader: Serving static upload page request.");
             try
             {
-                var assembly = typeof(MediaUploadController).Assembly;
                 // Ensure this resource name exactly matches Namespace.Folder.FileName.ext
                 var resourceName = "Jellyfin.Plugin.MediaUploader.Web.uploadPage.html";
 
-                using var stream = assembly.GetManifestResourceStream(resourceName);
+                // Nullability of GetManifestResourceStream is handled by the check below.
+                using var stream = GetEmbeddedResourceStream(resourceName);
 
                 if (stream == null)
                 {
@@ -190,7 +267,7 @@ namespace Jellyfin.Plugin.MediaUploader
                 }
 
                 using var reader = new StreamReader(stream, Encoding.UTF8);
-                var htmlContent = reader.ReadToEnd();
+                var htmlContent = await reader.ReadToEndAsync().ConfigureAwait(false);
 
                 return Content(htmlContent, "text/html", Encoding.UTF8);
             }
@@ -199,6 +276,18 @@ namespace Jellyfin.Plugin.MediaUploader
                  _logger.LogError(ex, "Media Uploader: Error serving static upload page");
                  return StatusCode(StatusCodes.Status500InternalServerError, "Error serving upload page");
             }
+        }
+
+        /// <summary>
+        /// Gets an embedded resource stream from the assembly.
+        /// Protected virtual for testability.
+        /// </summary>
+        /// <param name="resourceName">The name of the resource.</param>
+        /// <returns>The resource stream, or null if not found.</returns>
+        protected virtual Stream? GetEmbeddedResourceStream(string resourceName)
+        {
+            var assembly = typeof(MediaUploadController).Assembly;
+            return assembly.GetManifestResourceStream(resourceName);
         }
     }
 }

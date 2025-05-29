@@ -1,4 +1,4 @@
-name: '🏗️ Build Plugin'
+name: '🏗️ Build and Test Plugin'
 
 on:
   push:
@@ -12,7 +12,51 @@ on:
     paths-ignore:
       - '**/*.md'
   workflow_dispatch:
+    inputs:
+      dotnet-version:
+        description: '.NET version to use'
+        required: false
+        default: '8.0.x'
+      dotnet-target:
+        description: 'Target for .NET build (e.g., jellyfin, netcore)'
+        required: false
+        default: 'jellyfin'
 
 jobs:
-  call:
-    uses: jellyfin/jellyfin-meta-plugins/.github/workflows/build.yaml@master
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Required for oddstr13/jellyfin-plugin-repository-manager to push release notes etc.
+      
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          # Full git history is needed to determine version from last tag
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ github.event.inputs.dotnet-version || '8.0.x' }}
+
+      - name: Run Unit Tests
+        run: dotnet test Jellyfin.Plugin.MediaUploader.sln --configuration Release --verbosity normal
+
+      - name: Build Jellyfin Plugin
+        uses: oddstr13/jellyfin-plugin-repository-manager@v1.1.1
+        with:
+          plugin-csproj: Jellyfin.Plugin.MediaUploader/Jellyfin.Plugin.MediaUploader.csproj
+          dotnet-target: ${{ github.event.inputs.dotnet-target || 'jellyfin' }}
+          # GITHUB_TOKEN is implicitly provided by GitHub Actions
+          # Other inputs like `stable-branch-regex`, `manifest-version-regex` can be added if needed,
+          # but defaults are usually fine for standard Jellyfin plugin versioning (e.g., v1.0.0).
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Jellyfin.Plugin.MediaUploader-${{ env.VERSION_TAG }}.zip # VERSION_TAG is set by jellyfin-plugin-repository-manager
+          path: dist/Jellyfin.Plugin.MediaUploader*.zip # Path to the generated zip file
+          if-no-files-found: error # Fail the workflow if the artifact is not found
+          retention-days: 7 # Optional: How long to keep the artifact
+```
