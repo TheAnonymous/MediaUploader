@@ -118,3 +118,9 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 ## License
 
 This plugin is licensed under the [GPLv3](LICENSE).
+
+<!-- github-cicd-policy -->
+## Local validation policy
+
+This repository does not use GitHub Actions or any other GitHub-hosted CI/CD. Run tests, linters, builds, and all other checks locally before merging. A documented successful local test run is sufficient for review and merge.
+<!-- /github-cicd-policy -->
